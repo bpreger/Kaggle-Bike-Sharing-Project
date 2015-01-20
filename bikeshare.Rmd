@@ -1,0 +1,92 @@
+---
+title: "Bike Share Kaggle Competition Analysis"
+author: "Boris Preger"
+output: html_document
+---
+
+This analysis was done for a Kaggle competition to predict the usage of the Capital Bikeshare program in Washington DC. The goal is to predict the number of rentals based on factors such as time, season and weather. 
+
+We'll begin the analysis by loading in the necessary packages,setting the seed and letting R know the number of cores to be used for analysis.
+
+Caret will be the primary package used to create a machine learning algorithm. The other packages are used for reshaping or transforming the dataset, to speed up the learning process or to perform analysis functions.
+```{r,message=FALSE}
+library(reshape2)
+library(caret)
+library(lubridate)
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(doMC)
+registerDoMC(cores=2)
+set.seed(32857)
+```
+
+Now, we load in the dataset and take a look at the count data. To accomplish this, we split the datetime column into date and time to organize the count by date, and later, to use the time as a factor.
+```{r}
+bike<- read.csv("bikesharetrain.csv")
+split<- colsplit(bike$datetime," ",c("date","time"))
+bike<- bike[,-1]
+bike<-  cbind(split,bike)
+bike$date<- ymd(bike$date)
+```
+
+If we look at the graph, we see what looks like a time series with drift and seasonality, which implies a significant autocorrelation between each value and the number previous. Unfortunately, we cannot do this analysis as a time series since the held-out part of the dataset is from a variety of dates rather than just the end.
+```{r}
+ggplot(bike,aes(x=date,y=count)) + geom_line()
+```
+
+To get around the issue of correlation, there are a few things that we can do. One thing already done by the dataset is to create factor variables for the season. We can also convert time of day,the month and day of the week into a factor variable. This would approximate a multi-seasonal time series represented by daytime,weekday, month and season.
+
+Since we do not have the full dataset, we cannot simply decorrelate the observations from each other by removing the trend component. What we can do is to create a new variable that counts the number of days since the beginning of the dataset, which should approximate the overall trend component in the dataset. The code below demonstrates how to do all of these things, as well as remove non-predictive variables.
+
+```{r,cache=TRUE}
+bike<-mutate(bike,diff=date-date[1])
+bike$diff<-bike$diff/86400
+bike$time<- as.factor(bike$time)
+bike$season<- as.factor(bike$season)
+bike$weather<- as.factor(bike$weather)
+bike$day<- weekdays(bike$date,abbreviate=TRUE)
+bike$day<- as.factor(bike$day)
+bike$workingday<- as.factor(bike$workingday)
+bike$season<- as.factor(bike$season)
+bike$month<- months(bike$date,abbreviate=TRUE)
+bike$month<- as.factor(bike$month)
+bike$diff<- as.numeric(bike$diff)
+bike2<- bike[,-c(1,7,11:12)]
+```
+
+Now that the dataset looks as we would like it to, it is time to run our analysis of it. We first remove variables without any variance, split the data into a testing and training set, and set the control parameter on our train function. This algorithm creation uses a 5-fold repeated cross-validation analysis and selects the simplest model that is within one standard deviation of the most accurate models. According to Hastie and Tibshirani(2009,) finely tuned models tend to overfit on future samples, which makes a less complex model more effective for future use.
+```{r}
+nearZeroVar(bike2)
+bike2<- bike2[,-3]
+inTrain<- createDataPartition(y=bike2$count,p=0.75,list=FALSE)
+biketrainset<- bike2[inTrain,]
+biketestset<- bike2[-inTrain,]
+control<- trainControl(method="repeatedcv",number=5,repeats=3,
+                       returnResamp="final",savePredictions=TRUE,p=0.75,
+                       allowParallel=TRUE,selectionFunction="oneSE")
+```
+
+For this analysis, many possible algorithms were attempted,tuning for the lowest root mean-squared error (RMSE). Some of the ones used include bagged splines, elastic net,random forests and boosted trees. It would have been preferrable to used linear or polynomial models, but tree-based models were superior to those. However, the best option turned out to be a Bayesian regularization for feed-forward neural networks. Hyndman and Athanasopoulos (2013) find neural networks to be an effective tool for time series, which as mentioned before, is a good approximation for our dataset, and Bayesian regularized models outperformed regular neural networks. 
+
+A previously analysed train object was loaded so my 2012 Macbook Air would not have to sit through another taxing 3 hour analysis process, but all the code is posted for the benefit of reproducible research.
+
+```{r,eval=FALSE}
+biketrain<- train(count~.,data=biketrainset,method="brnn",trControl=control,
+                   tuneLength=10)
+```
+
+```{r,echo=FALSE}
+load("~/Desktop/Rworkspace/brnnbike.RData")
+biketrain$results
+```
+
+We can see that the model chosen showed an RMSE of 41.2 with a standard deviation of 1.93. If we normalize that RMSE, we get a value of .042, suggesting that our estimates are only off by about 4.2% of the count values overall, which is a good fitting model.
+
+Now, let's see how it compares to our held out dataset
+```{r}
+bikepreds<- predict(biketrain,biketestset)
+RMSE(bikepreds,biketestset$count)
+```
+
+The RMSE of 37.8 is suprisingly 1.76 standard deviations lower than what we would expect of that value, but still within a 95% confidence interval. While this performance is a bit strange, it's not too aberrant. Our normalized RMSE of .039 still means our estimates are off by 3.9%, which is a little better than what we coult have expected, as above.
