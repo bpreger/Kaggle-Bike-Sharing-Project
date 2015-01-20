@@ -55,7 +55,7 @@ bike$diff<- as.numeric(bike$diff)
 bike2<- bike[,-c(1,7,11:12)]
 ```
 
-Now that the dataset looks as we would like it to, it is time to run our analysis of it. We first remove variables without any variance, split the data into a testing and training set, and set the control parameter on our train function. This algorithm creation uses a 5-fold repeated cross-validation analysis and selects the simplest model that is within one standard deviation of the most accurate models. According to Hastie and Tibshirani(2009,) finely tuned models tend to overfit on future samples, which makes a less complex model more effective for future use.
+Now that the dataset looks as we would like it to, it is time to run our analysis of it. We first remove variables without any variance, split the data into a testing and training set, and set the control parameter on our train function. This algorithm creation uses a 5-fold repeated cross-validation analysis and selects the simplest model that is within one standard deviation of the most accurate models. According to Hastie, Tibshirani & Friedman (2009,) finely tuned models tend to overfit on future samples, which makes a less complex model more effective for future use.
 ```{r}
 nearZeroVar(bike2)
 bike2<- bike2[,-3]
@@ -90,3 +90,8 @@ RMSE(bikepreds,biketestset$count)
 ```
 
 The RMSE of 37.8 is suprisingly 1.76 standard deviations lower than what we would expect of that value, but still within a 95% confidence interval. While this performance is a bit strange, it's not too aberrant. Our normalized RMSE of .039 still means our estimates are off by 3.9%, which is a little better than what we coult have expected, as above.
+
+                                        Bibliography
+Hastie, T., Tibshirani, R., & Friedman, J. (2009). The elements of statistical learning (Vol. 2, No. 1). New York: Springer.
+
+Hyndman, R. J., & Athanasopoulos, G. (2014). Forecasting: principles and practice. OTexts.
